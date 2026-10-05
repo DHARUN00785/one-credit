@@ -2,3 +2,5 @@ streamlit
 tensorflow
 numpy
 pandas
+fastapi
+uvicorn[standard]

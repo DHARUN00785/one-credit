@@ -1,6 +1,7 @@
 import streamlit as st
 import tensorflow as tf
-import numpy as np
+
+from prediction import AGE_OPTIONS, classify_risk, predict_readmission
 
 # ─────────────────────────────────────────────
 # Page Configuration
@@ -126,12 +127,7 @@ with col1:
     gender = st.radio("Gender", ["Female", "Male"], horizontal=True)
     gender_val = 1 if gender == "Male" else 0
 
-    age_options = [
-        "[0-10)", "[10-20)", "[20-30)", "[30-40)", "[40-50)",
-        "[50-60)", "[60-70)", "[70-80)", "[80-90)", "[90-100)"
-    ]
-    age_opt = st.selectbox("Age Range", age_options, index=6)
-    age_val = age_options.index(age_opt)
+    age_opt = st.selectbox("Age Range", AGE_OPTIONS, index=6)
 
     st.markdown('<p class="section-label">🏥 Current Hospitalisation</p>', unsafe_allow_html=True)
     time_in_hosp = st.slider("Time in Hospital (Days)", 1, 14, 3)
@@ -149,53 +145,6 @@ with col2:
     num_inpatient  = st.slider("Inpatient Visits",  0, 21, 0)
 
 # ─────────────────────────────────────────────
-# StandardScaler parameters (from diabetic_data.csv training set)
-# The model was trained on StandardScaler-normalized features.
-# ─────────────────────────────────────────────
-FEATURE_MEAN = np.array([0.462, 6.088, 4.396, 43.096, 1.340, 16.022, 0.369, 0.198, 0.636, 7.423], dtype=np.float32)
-FEATURE_STD  = np.array([0.499, 1.604, 2.985, 19.671, 1.705, 8.128, 1.267, 0.931, 1.263, 1.938], dtype=np.float32)
-
-# ─────────────────────────────────────────────
-# Build feature vector & apply StandardScaler
-# Feature order: gender, age, time_in_hospital, num_lab_procedures, num_procedures,
-#                num_medications, number_outpatient, number_emergency,
-#                number_inpatient, number_diagnoses
-# ─────────────────────────────────────────────
-def get_prediction_array():
-    raw = np.array([[
-        gender_val, age_val, time_in_hosp, num_lab_procs, num_procs,
-        num_meds, num_outpatient, num_emergency, num_inpatient, num_diagnoses
-    ]], dtype=np.float32)
-    # Apply the same StandardScaler used during training
-    scaled = (raw - FEATURE_MEAN) / FEATURE_STD
-    return scaled
-
-# ─────────────────────────────────────────────
-# Risk Tier Configuration
-# With StandardScaler, model outputs span a meaningful range:
-#   Extreme-high-risk patients: ~20-25%
-#   Medium-risk patients:       ~5-10%
-#   Low-risk patients:          ~0.5-4%
-# ─────────────────────────────────────────────
-def classify_risk(p: float):
-    """Return (tier_label, tier_class, explanation)."""
-    if p >= 0.15:
-        return "🔴 High Risk", "risk-high", (
-            "This patient has a significantly elevated readmission risk. "
-            "Consider enhanced discharge planning and close follow-up."
-        )
-    elif p >= 0.06:
-        return "🟠 Moderate Risk", "risk-moderate", (
-            "This patient shows moderate readmission risk indicators. "
-            "Ensure a clear follow-up plan before discharge."
-        )
-    else:
-        return "🟢 Low Risk", "risk-low", (
-            "This patient currently shows low readmission risk indicators. "
-            "Standard discharge protocols are appropriate."
-        )
-
-# ─────────────────────────────────────────────
 # Prediction
 # ─────────────────────────────────────────────
 st.divider()
@@ -205,8 +154,11 @@ with predict_col:
 
 if run_pred:
     with st.spinner("Analysing patient data…"):
-        input_data = get_prediction_array()
-        raw_prob   = float(model.predict(input_data, verbose=0)[0][0])
+        raw_prob = predict_readmission(model, [
+            gender_val, AGE_OPTIONS.index(age_opt), time_in_hosp, num_lab_procs,
+            num_procs, num_meds, num_outpatient, num_emergency, num_inpatient,
+            num_diagnoses,
+        ])
 
     label, css_class, advice = classify_risk(raw_prob)
     pct = raw_prob * 100
